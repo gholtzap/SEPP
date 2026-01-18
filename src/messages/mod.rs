@@ -105,6 +105,31 @@ impl MessageProcessor {
 
         self.jws_engine.verify(signature, "peer-sepp")?;
 
+        let mut original_encrypted_locations = Vec::new();
+        if let Some(body) = &message.body {
+            for api_ie_mapping in &self.policy_engine.get_encryption_policy().api_ie_mappings {
+                for ie in &api_ie_mapping.ie_list {
+                    if ie.encryption_required {
+                        let pointer = ie.json_path.replace('.', "/");
+                        if let Some(value) = body.pointer(&pointer) {
+                            if let Some(obj) = value.as_object() {
+                                if obj.contains_key("encBlockIdx") {
+                                    original_encrypted_locations.push(ie.json_path.clone());
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        if let Some(body) = &message.body {
+            self.policy_engine.detect_encrypted_ie_misplacement(
+                &original_encrypted_locations,
+                body,
+            )?;
+        }
+
         let decrypted_data = self.jwe_engine.decrypt_data(&encrypted_blocks)?;
 
         let mut restored_message = message.clone();

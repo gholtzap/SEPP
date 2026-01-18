@@ -121,21 +121,110 @@ impl PolicyEngine {
         original_locations: &[String],
         modified_message: &Value,
     ) -> Result<(), SeppError> {
-        for location in original_locations {
-            let pointer = location.replace('.', "/");
+        let mut allowed_locations: std::collections::HashSet<String> = original_locations
+            .iter()
+            .map(|loc| loc.replace('.', "/"))
+            .collect();
+
+        for api_ie_mapping in &self.protection_policy.data_type_enc_policy.api_ie_mappings {
+            for ie in &api_ie_mapping.ie_list {
+                if ie.encryption_required {
+                    allowed_locations.insert(ie.json_path.replace('.', "/"));
+                }
+            }
+        }
+
+        let mut found_enc_block_refs = Vec::new();
+        self.collect_enc_block_idx_locations(modified_message, "", &mut found_enc_block_refs);
+
+        for found_location in &found_enc_block_refs {
+            let normalized_location = if found_location.starts_with('/') {
+                found_location[1..].to_string()
+            } else {
+                found_location.clone()
+            };
+
+            let location_allowed = allowed_locations.iter().any(|allowed| {
+                let normalized_allowed = if allowed.starts_with('/') {
+                    &allowed[1..]
+                } else {
+                    allowed
+                };
+                normalized_location == normalized_allowed
+            });
+
+            if !location_allowed {
+                tracing::error!(
+                    event = "ENCRYPTED_IE_MISPLACEMENT_DETECTED",
+                    location = found_location,
+                    "Unauthorized encBlockIdx reference found at location"
+                );
+                return Err(SeppError::EncryptedIeMisplacement(format!(
+                    "Unauthorized encBlockIdx reference at location: {}. Allowed locations: {:?}",
+                    found_location, allowed_locations
+                )));
+            }
+        }
+
+        for original_location in original_locations {
+            let pointer = original_location.replace('.', "/");
             if let Some(value) = modified_message.pointer(&pointer) {
-                if self.is_encrypted_ie_reference(value) {
-                    return Ok(());
+                if !self.is_encrypted_ie_reference(value) {
+                    tracing::error!(
+                        event = "ENCRYPTED_IE_REMOVED",
+                        location = original_location,
+                        "Encrypted IE was removed or replaced from original location"
+                    );
+                    return Err(SeppError::EncryptedIeMisplacement(format!(
+                        "Encrypted IE at location {} was removed or replaced",
+                        original_location
+                    )));
                 }
             } else {
+                tracing::error!(
+                    event = "ENCRYPTED_IE_LOCATION_MISSING",
+                    location = original_location,
+                    "Original encrypted IE location no longer exists"
+                );
                 return Err(SeppError::EncryptedIeMisplacement(format!(
-                    "Encrypted IE at location {} was moved or removed",
-                    location
+                    "Encrypted IE location {} no longer exists in message",
+                    original_location
                 )));
             }
         }
 
         Ok(())
+    }
+
+    fn collect_enc_block_idx_locations(
+        &self,
+        value: &Value,
+        current_path: &str,
+        locations: &mut Vec<String>,
+    ) {
+        match value {
+            Value::Object(obj) => {
+                if obj.contains_key("encBlockIdx") {
+                    locations.push(current_path.to_string());
+                    return;
+                }
+                for (key, val) in obj {
+                    let new_path = if current_path.is_empty() {
+                        key.clone()
+                    } else {
+                        format!("{}/{}", current_path, key)
+                    };
+                    self.collect_enc_block_idx_locations(val, &new_path, locations);
+                }
+            }
+            Value::Array(arr) => {
+                for (i, val) in arr.iter().enumerate() {
+                    let new_path = format!("{}/{}", current_path, i);
+                    self.collect_enc_block_idx_locations(val, &new_path, locations);
+                }
+            }
+            _ => {}
+        }
     }
 
     fn path_matches_ie_type(&self, path: &str, ie_type: &str) -> bool {
