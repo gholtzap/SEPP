@@ -46,12 +46,6 @@ async fn main() -> anyhow::Result<()> {
     let config = SeppConfig::from_env()?;
     tracing::info!("Loaded configuration for PLMN {}", config.sepp.plmn_id);
 
-    let n32c_manager = Arc::new(N32cManager::new());
-    let n32f_manager = Arc::new(N32fManager::new());
-
-    let jwe_engine = JweEngine::new();
-    let jws_engine = Arc::new(JwsEngine::new());
-
     let protection_policy = types::ProtectionPolicy {
         data_type_enc_policy: types::DataTypeEncryptionPolicy {
             api_ie_mappings: vec![],
@@ -61,6 +55,12 @@ async fn main() -> anyhow::Result<()> {
             prohibited_operations: vec![],
         },
     };
+
+    let n32c_manager = Arc::new(N32cManager::new(protection_policy.clone()));
+    let n32f_manager = Arc::new(N32fManager::new());
+
+    let jwe_engine = JweEngine::new();
+    let jws_engine = Arc::new(JwsEngine::new());
 
     let policy_engine = Arc::new(PolicyEngine::new(protection_policy));
     let ipx_manager = Arc::new(ipx::IpxManager::new(jws_engine.clone(), policy_engine.clone()));

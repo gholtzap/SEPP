@@ -77,6 +77,60 @@ impl PolicyEngine {
             }
         }
 
+        let local_prohibited_count = self.protection_policy.modification_policy.prohibited_operations.len();
+        let peer_prohibited_count = peer_policy.modification_policy.prohibited_operations.len();
+
+        if local_prohibited_count != peer_prohibited_count {
+            return Err(SeppError::PolicyMismatch(format!(
+                "Prohibited operations count mismatch: local={}, peer={}",
+                local_prohibited_count, peer_prohibited_count
+            )));
+        }
+
+        for local_prohibited in &self.protection_policy.modification_policy.prohibited_operations {
+            let peer_prohibited = peer_policy
+                .modification_policy
+                .prohibited_operations
+                .iter()
+                .find(|p| p.ie_type == local_prohibited.ie_type && p.operation == local_prohibited.operation);
+
+            if peer_prohibited.is_none() {
+                return Err(SeppError::PolicyMismatch(format!(
+                    "Prohibited operation mismatch: {} on {} not found in peer policy",
+                    local_prohibited.operation, local_prohibited.ie_type
+                )));
+            }
+        }
+
+        let local_allowed_count = self.protection_policy.modification_policy.allowed_modifications.len();
+        let peer_allowed_count = peer_policy.modification_policy.allowed_modifications.len();
+
+        if local_allowed_count != peer_allowed_count {
+            return Err(SeppError::PolicyMismatch(format!(
+                "Allowed modifications count mismatch: local={}, peer={}",
+                local_allowed_count, peer_allowed_count
+            )));
+        }
+
+        for local_allowed in &self.protection_policy.modification_policy.allowed_modifications {
+            let peer_allowed = peer_policy
+                .modification_policy
+                .allowed_modifications
+                .iter()
+                .find(|a| {
+                    a.ipx_provider_id == local_allowed.ipx_provider_id
+                        && a.ie_type == local_allowed.ie_type
+                        && format!("{:?}", a.operation) == format!("{:?}", local_allowed.operation)
+                });
+
+            if peer_allowed.is_none() {
+                return Err(SeppError::PolicyMismatch(format!(
+                    "Allowed modification mismatch: IPX {} operation {:?} on {} not found in peer policy",
+                    local_allowed.ipx_provider_id, local_allowed.operation, local_allowed.ie_type
+                )));
+            }
+        }
+
         Ok(())
     }
 
