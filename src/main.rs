@@ -19,6 +19,7 @@ use axum::{
     routing::{get, post},
     Router,
 };
+use certificates::CertificateManager;
 use config::SeppConfig;
 use crypto::{JweEngine, JwsEngine};
 use handlers::{N32cHandlers, N32fHandlers, SbiHandlers};
@@ -56,6 +57,33 @@ async fn main() -> anyhow::Result<()> {
         },
     };
 
+    let certificate_manager = Arc::new(CertificateManager::new());
+
+    tracing::info!("Loading SEPP certificates and keys");
+    certificate_manager
+        .load_sepp_certificate(&config.security.sepp_certificate_path)
+        .await?;
+
+    tracing::info!("Loading trust anchors for roaming partners");
+    for (plmn_id, partner_config) in &config.roaming_partners {
+        tracing::info!("Loading trust anchor for PLMN {}", plmn_id);
+        certificate_manager
+            .load_trust_anchor(plmn_id, &partner_config.trust_anchor_path)
+            .await?;
+
+        for ipx_provider in &partner_config.ipx_providers {
+            let connection_id = format!("{}-{}", config.sepp.plmn_id, plmn_id);
+            tracing::info!(
+                "Loading IPX certificate for provider {} on connection {}",
+                ipx_provider.provider_id,
+                connection_id
+            );
+            certificate_manager
+                .load_ipx_certificate(&ipx_provider.certificate_path, &connection_id)
+                .await?;
+        }
+    }
+
     let n32c_manager = Arc::new(N32cManager::new(protection_policy.clone()));
     let n32f_manager = Arc::new(N32fManager::new());
 
@@ -72,6 +100,7 @@ async fn main() -> anyhow::Result<()> {
             (*policy_engine).clone(),
         )
         .with_ipx_manager(ipx_manager.clone())
+        .with_certificate_manager(certificate_manager.clone())
     );
 
     let sepp_router = Arc::new(SeppRouter::new());

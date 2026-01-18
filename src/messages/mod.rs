@@ -1,3 +1,4 @@
+use crate::certificates::CertificateManager;
 use crate::crypto::{JweEngine, JwsEngine};
 use crate::errors::SeppError;
 use crate::ipx::IpxManager;
@@ -11,6 +12,7 @@ pub struct MessageProcessor {
     jws_engine: JwsEngine,
     policy_engine: PolicyEngine,
     ipx_manager: Option<Arc<IpxManager>>,
+    certificate_manager: Option<Arc<CertificateManager>>,
 }
 
 impl MessageProcessor {
@@ -20,11 +22,17 @@ impl MessageProcessor {
             jws_engine,
             policy_engine,
             ipx_manager: None,
+            certificate_manager: None,
         }
     }
 
     pub fn with_ipx_manager(mut self, ipx_manager: Arc<IpxManager>) -> Self {
         self.ipx_manager = Some(ipx_manager);
+        self
+    }
+
+    pub fn with_certificate_manager(mut self, certificate_manager: Arc<CertificateManager>) -> Self {
+        self.certificate_manager = Some(certificate_manager);
         self
     }
 
