@@ -57,6 +57,7 @@ impl N32fHandlers {
 
         let mut encrypted_blocks = Vec::new();
         let mut signature = None;
+        let mut ipx_signatures = Vec::new();
 
         for header in &headers {
             if header.name.starts_with("X-Enc-Block-") {
@@ -89,6 +90,19 @@ impl N32fHandlers {
                     String::from_utf8(decoded)
                         .map_err(|e| SeppError::JwsVerification(format!("Invalid UTF-8 in signature: {}", e)))?,
                 );
+            } else if header.name.starts_with("X-IPX-Signature-") {
+                if let Some(provider_id) = header.name.strip_prefix("X-IPX-Signature-") {
+                    let decoded = base64::Engine::decode(
+                        &base64::engine::general_purpose::STANDARD,
+                        &header.value,
+                    )
+                    .map_err(|e| SeppError::JwsVerification(format!("Failed to decode IPX signature: {}", e)))?;
+
+                    ipx_signatures.push(crate::types::IpxSignature {
+                        provider_id: provider_id.to_string(),
+                        signature: decoded,
+                    });
+                }
             }
         }
 
@@ -103,8 +117,18 @@ impl N32fHandlers {
             .map_err(|e| SeppError::Internal(format!("Failed to read request body: {}", e)))?
             .to_bytes();
 
-        let body_json = if !body_bytes.is_empty() {
+        let body_json: Option<serde_json::Value> = if !body_bytes.is_empty() {
             Some(serde_json::from_slice(&body_bytes)?)
+        } else {
+            None
+        };
+
+        let modifications_list: Option<Vec<crate::types::MessageModification>> = if let Some(body) = &body_json {
+            if let Some(mods) = body.get("modificationsList") {
+                serde_json::from_value(mods.clone()).ok()
+            } else {
+                None
+            }
         } else {
             None
         };
@@ -162,7 +186,13 @@ impl N32fHandlers {
 
         let processed_message = handlers
             .message_processor
-            .process_inbound_message(sbi_message, encrypted_blocks, &signature)
+            .process_inbound_message(
+                sbi_message,
+                encrypted_blocks,
+                &signature,
+                ipx_signatures,
+                modifications_list,
+            )
             .await?;
 
         let target_nf_uri = processed_message.original.uri.clone();

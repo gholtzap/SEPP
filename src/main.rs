@@ -63,13 +63,16 @@ async fn main() -> anyhow::Result<()> {
     };
 
     let policy_engine = Arc::new(PolicyEngine::new(protection_policy));
-    let _ipx_manager = Arc::new(ipx::IpxManager::new(jws_engine.clone(), policy_engine.clone()));
+    let ipx_manager = Arc::new(ipx::IpxManager::new(jws_engine.clone(), policy_engine.clone()));
 
-    let message_processor = Arc::new(MessageProcessor::new(
-        jwe_engine,
-        (*jws_engine).clone(),
-        (*policy_engine).clone(),
-    ));
+    let message_processor = Arc::new(
+        MessageProcessor::new(
+            jwe_engine,
+            (*jws_engine).clone(),
+            (*policy_engine).clone(),
+        )
+        .with_ipx_manager(ipx_manager.clone())
+    );
 
     let sepp_router = Arc::new(SeppRouter::new());
 

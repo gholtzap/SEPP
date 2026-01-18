@@ -1,13 +1,16 @@
 use crate::crypto::{JweEngine, JwsEngine};
 use crate::errors::SeppError;
+use crate::ipx::IpxManager;
 use crate::policies::PolicyEngine;
 use crate::types::{DataToEncrypt, MessageDirection, ProcessedMessage, SbiMessage};
 use serde_json::Value;
+use std::sync::Arc;
 
 pub struct MessageProcessor {
     jwe_engine: JweEngine,
     jws_engine: JwsEngine,
     policy_engine: PolicyEngine,
+    ipx_manager: Option<Arc<IpxManager>>,
 }
 
 impl MessageProcessor {
@@ -16,7 +19,13 @@ impl MessageProcessor {
             jwe_engine,
             jws_engine,
             policy_engine,
+            ipx_manager: None,
         }
+    }
+
+    pub fn with_ipx_manager(mut self, ipx_manager: Arc<IpxManager>) -> Self {
+        self.ipx_manager = Some(ipx_manager);
+        self
     }
 
     pub async fn process_outbound_message(&self, message: SbiMessage) -> Result<ProcessedMessage, SeppError> {
@@ -70,7 +79,30 @@ impl MessageProcessor {
         message: SbiMessage,
         encrypted_blocks: Vec<crate::types::EncryptedBlock>,
         signature: &str,
+        ipx_signatures: Vec<crate::types::IpxSignature>,
+        modifications_list: Option<Vec<crate::types::MessageModification>>,
     ) -> Result<ProcessedMessage, SeppError> {
+        if let (Some(ipx_manager), Some(ref mods_list)) = (&self.ipx_manager, &modifications_list) {
+            if !ipx_signatures.is_empty() {
+                tracing::info!("Verifying {} IPX signatures", ipx_signatures.len());
+
+                for ipx_sig in &ipx_signatures {
+                    let payload = serde_json::to_vec(&message)?;
+                    ipx_manager.verify_ipx_signatures(&payload, mods_list)?;
+
+                    tracing::info!(
+                        event = "IPX_SIGNATURE_VERIFIED",
+                        provider_id = ipx_sig.provider_id,
+                        "IPX signature verification successful"
+                    );
+                }
+            }
+
+            if !mods_list.is_empty() {
+                tracing::info!("Found {} IPX modifications", mods_list.len());
+            }
+        }
+
         self.jws_engine.verify(signature, "peer-sepp")?;
 
         let decrypted_data = self.jwe_engine.decrypt_data(&encrypted_blocks)?;
