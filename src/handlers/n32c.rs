@@ -1,7 +1,7 @@
 use crate::errors::SeppError;
 use crate::n32c::N32cManager;
-use crate::types::{N32HandshakeRequest, N32HandshakeResponse, PlmnId};
-use axum::{extract::State, Json};
+use crate::types::{N32ErrorNotification, N32HandshakeRequest, N32HandshakeResponse, PlmnId};
+use axum::{extract::State, http::StatusCode, Json};
 use std::sync::Arc;
 
 pub struct N32cHandlers {
@@ -31,5 +31,22 @@ impl N32cHandlers {
         tracing::info!("N32-c handshake successful");
 
         Ok(Json(response))
+    }
+
+    pub async fn handle_error_notification(
+        State(handlers): State<Arc<Self>>,
+        Json(notification): Json<N32ErrorNotification>,
+    ) -> Result<StatusCode, SeppError> {
+        tracing::info!(
+            "Received N32-c error notification for context {}",
+            notification.context_id
+        );
+
+        handlers
+            .n32c_manager
+            .handle_error_notification(notification)
+            .await?;
+
+        Ok(StatusCode::NO_CONTENT)
     }
 }

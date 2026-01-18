@@ -161,6 +161,30 @@ pub struct JsonPatchOperation {
     pub from: Option<String>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct N32ErrorNotification {
+    pub context_id: String,
+    pub error_type: N32ErrorType,
+    pub error_detail: String,
+    pub timestamp: DateTime<Utc>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub affected_message_id: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum N32ErrorType {
+    PolicyMismatch,
+    PlmnIdMismatch,
+    CertificateValidationFailure,
+    EncryptedIeMisplacement,
+    IpxModificationViolation,
+    JwsVerificationFailure,
+    ContextNotFound,
+    SecurityCapabilityNegotiationFailure,
+}
+
 impl N32Context {
     pub fn new(local_plmn_id: PlmnId, remote_plmn_id: PlmnId) -> Self {
         Self {

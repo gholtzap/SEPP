@@ -113,6 +113,45 @@ impl SeppClient {
         let handshake_response = response.json().await.map_err(|e| SeppError::HttpClient(e))?;
         Ok(handshake_response)
     }
+
+    pub async fn send_error_notification(
+        &self,
+        peer_endpoint: &str,
+        notification: crate::types::N32ErrorNotification,
+    ) -> Result<(), SeppError> {
+        tracing::info!(
+            context_id = %notification.context_id,
+            error_type = ?notification.error_type,
+            "Sending error notification to peer SEPP"
+        );
+
+        let response = self
+            .client
+            .post(format!("{}/n32c-handshake/v1/error-notification", peer_endpoint))
+            .json(&notification)
+            .send()
+            .await
+            .map_err(|e| SeppError::HttpClient(e))?;
+
+        if !response.status().is_success() {
+            tracing::warn!(
+                peer_endpoint = %peer_endpoint,
+                status = %response.status(),
+                "Failed to send error notification to peer SEPP"
+            );
+            return Err(SeppError::N32c(format!(
+                "Error notification failed: {}",
+                response.status()
+            )));
+        }
+
+        tracing::info!(
+            context_id = %notification.context_id,
+            "Successfully sent error notification to peer SEPP"
+        );
+
+        Ok(())
+    }
 }
 
 impl Default for SeppClient {

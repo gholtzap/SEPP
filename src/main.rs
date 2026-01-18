@@ -131,12 +131,18 @@ async fn main() -> anyhow::Result<()> {
         n32f_manager
             .create_connection(context_id, partner_config.n32f_endpoint.clone())
             .await?;
+
+        n32c_manager.register_peer_endpoint(&partner_config.plmn_id, partner_config.n32c_endpoint.clone());
     }
 
     let n32c_app = Router::new()
         .route(
             "/n32c-handshake/v1/exchange-capability",
             post(handlers::N32cHandlers::handle_exchange_capability),
+        )
+        .route(
+            "/n32c-handshake/v1/error-notification",
+            post(handlers::N32cHandlers::handle_error_notification),
         )
         .with_state(n32c_handlers)
         .layer(TraceLayer::new_for_http())
