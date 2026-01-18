@@ -1,0 +1,49 @@
+[package]
+name = "sepp"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+axum = "0.7"
+tokio = { version = "1", features = ["full"] }
+hyper = { version = "1", features = ["server", "http2", "client"] }
+hyper-util = { version = "0.1", features = ["tokio", "client", "client-legacy", "http2"] }
+http-body-util = "0.1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+mongodb = "3"
+dotenvy = "0.15"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tower = "0.4"
+tower-http = { version = "0.5", features = ["trace", "cors"] }
+chrono = { version = "0.4", features = ["serde"] }
+uuid = { version = "1", features = ["v4", "serde"] }
+thiserror = "1"
+anyhow = "1"
+sha2 = "0.10"
+hmac = "0.12"
+hex = "0.4"
+base64 = "0.22"
+reqwest = { version = "0.12", features = ["json", "rustls-tls"], default-features = false }
+regex = "1"
+tokio-rustls = { version = "0.26", default-features = false, features = ["ring", "logging", "tls12"] }
+rustls = { version = "0.23", default-features = false, features = ["ring", "std"] }
+rustls-pemfile = "2"
+rustls-webpki = "0.102"
+tokio-stream = { version = "0.1", features = ["net"] }
+jsonwebtoken = "9"
+josekit = "0.8"
+rand = "0.8"
+serde_yaml = "0.9"
+url = "2"
+bytes = "1"
+futures = "0.3"
+async-trait = "0.1"
+x509-parser = "0.16"
+der-parser = "9"
+oid-registry = "0.7"
+webpki-roots = "0.26"
+dashmap = "6"
+parking_lot = "0.12"
+json-patch = "2"
