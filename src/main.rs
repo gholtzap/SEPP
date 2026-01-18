@@ -82,7 +82,21 @@ async fn main() -> anyhow::Result<()> {
         message_processor.clone(),
     ));
 
-    let sbi_handlers = Arc::new(SbiHandlers::new(sepp_router.clone()));
+    let sbi_handlers = Arc::new(SbiHandlers::new(
+        sepp_router.clone(),
+        message_processor.clone(),
+        n32f_manager.clone(),
+        Arc::new(config.clone()),
+    ));
+
+    for (plmn_id, partner_config) in &config.roaming_partners {
+        let context_id = format!("{}-{}", config.sepp.plmn_id, plmn_id);
+        tracing::info!("Creating N32-f connection to {} ({})", partner_config.sepp_fqdn, context_id);
+
+        n32f_manager
+            .create_connection(context_id, partner_config.n32f_endpoint.clone())
+            .await?;
+    }
 
     let n32c_app = Router::new()
         .route(
