@@ -14,6 +14,7 @@ pub struct N32fHandlers {
     n32c_manager: Arc<N32cManager>,
     message_processor: Arc<MessageProcessor>,
     router: Arc<Router>,
+    auth_validator: Arc<AuthValidator>,
     nf_client: reqwest::Client,
 }
 
@@ -23,6 +24,7 @@ impl N32fHandlers {
         n32c_manager: Arc<N32cManager>,
         message_processor: Arc<MessageProcessor>,
         router: Arc<Router>,
+        auth_validator: Arc<AuthValidator>,
     ) -> Self {
         let nf_client = reqwest::Client::builder()
             .build()
@@ -33,6 +35,7 @@ impl N32fHandlers {
             n32c_manager,
             message_processor,
             router,
+            auth_validator,
             nf_client,
         }
     }
@@ -140,7 +143,7 @@ impl N32fHandlers {
             body: body_json,
         };
 
-        let access_token = AuthValidator::extract_access_token(&headers)?;
+        let access_token = handlers.auth_validator.extract_and_validate_token(&headers)?;
         let token_plmn_str = AuthValidator::extract_plmn_id_from_token(&access_token)?;
         let token_plmn_id = PlmnId::from_string(&token_plmn_str).ok_or_else(|| {
             tracing::error!(

@@ -93,6 +93,8 @@ pub struct SecurityConfig {
     pub cipher_suites: Vec<String>,
     pub jwt_signing_algorithm: String,
     pub jwe_encryption_algorithm: String,
+    pub oauth_token_issuer: String,
+    pub oauth_expected_audience: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -141,6 +143,10 @@ impl SeppConfig {
                 cipher_suites: vec![],
                 jwt_signing_algorithm: "ES256".to_string(),
                 jwe_encryption_algorithm: "A256GCM".to_string(),
+                oauth_token_issuer: std::env::var("OAUTH_TOKEN_ISSUER")
+                    .unwrap_or_else(|_| "nrf.5gc.mnc001.mcc001.3gppnetwork.org".to_string()),
+                oauth_expected_audience: std::env::var("OAUTH_EXPECTED_AUDIENCE")
+                    .unwrap_or_else(|_| "sepp".to_string()),
             },
             logging: LoggingConfig {
                 level: std::env::var("LOG_LEVEL").unwrap_or_else(|_| "info".to_string()),

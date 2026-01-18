@@ -105,6 +105,12 @@ async fn main() -> anyhow::Result<()> {
 
     let sepp_router = Arc::new(SeppRouter::new());
 
+    let auth_validator = Arc::new(auth::AuthValidator::new(
+        jws_engine.clone(),
+        config.security.oauth_token_issuer.clone(),
+        config.security.oauth_expected_audience.clone(),
+    ));
+
     let n32c_handlers = Arc::new(N32cHandlers::new(
         n32c_manager.clone(),
         config.sepp.plmn_id.clone(),
@@ -115,6 +121,7 @@ async fn main() -> anyhow::Result<()> {
         n32c_manager.clone(),
         message_processor.clone(),
         sepp_router.clone(),
+        auth_validator.clone(),
     ));
 
     let sbi_handlers = Arc::new(SbiHandlers::new(
