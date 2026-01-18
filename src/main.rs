@@ -1,3 +1,4 @@
+mod auth;
 mod certificates;
 mod clients;
 mod config;
@@ -79,7 +80,9 @@ async fn main() -> anyhow::Result<()> {
 
     let n32f_handlers = Arc::new(N32fHandlers::new(
         n32f_manager.clone(),
+        n32c_manager.clone(),
         message_processor.clone(),
+        sepp_router.clone(),
     ));
 
     let sbi_handlers = Arc::new(SbiHandlers::new(
