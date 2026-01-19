@@ -158,4 +158,76 @@ impl SeppConfig {
 
         Ok(default_config)
     }
+
+    pub fn from_file(path: &str) -> anyhow::Result<Self> {
+        let contents = std::fs::read_to_string(path)?;
+        let config: Self = serde_json::from_str(&contents)?;
+        Ok(config)
+    }
+}
+
+impl DataTypeEncryptionPolicyConfig {
+    pub fn to_runtime_policy(&self) -> crate::types::DataTypeEncryptionPolicy {
+        crate::types::DataTypeEncryptionPolicy {
+            api_ie_mappings: self.api_ie_mappings.iter().map(|m| m.to_runtime()).collect(),
+        }
+    }
+}
+
+impl ApiIeMappingConfig {
+    pub fn to_runtime(&self) -> crate::types::ApiIeMapping {
+        crate::types::ApiIeMapping {
+            api_name: self.api_name.clone(),
+            ie_list: self.ie_list.iter().map(|ie| ie.to_runtime()).collect(),
+        }
+    }
+}
+
+impl IeConfig {
+    pub fn to_runtime(&self) -> crate::types::InformationElement {
+        crate::types::InformationElement {
+            ie_type: self.ie_type.clone(),
+            json_path: self.json_path.clone(),
+            encryption_required: self.encryption_required,
+        }
+    }
+}
+
+impl ModificationPolicyConfig {
+    pub fn to_runtime_policy(&self) -> crate::types::ModificationPolicy {
+        let mut allowed_modifications = Vec::new();
+        let prohibited_operations = Vec::new();
+
+        for allowed in &self.allowed_modifications {
+            for operation_str in &allowed.operations {
+                let operation = match operation_str.as_str() {
+                    "ADD" => crate::types::ModificationOperation::Add,
+                    "REMOVE" => crate::types::ModificationOperation::Remove,
+                    "REPLACE" => crate::types::ModificationOperation::Replace,
+                    "MOVE" => crate::types::ModificationOperation::Move,
+                    "COPY" => crate::types::ModificationOperation::Copy,
+                    _ => continue,
+                };
+                allowed_modifications.push(crate::types::AllowedModification {
+                    ipx_provider_id: allowed.ipx_provider_id.clone(),
+                    ie_type: allowed.ie_type.clone(),
+                    operation,
+                });
+            }
+        }
+
+        crate::types::ModificationPolicy {
+            allowed_modifications,
+            prohibited_operations,
+        }
+    }
+}
+
+impl RoamingPartnerConfig {
+    pub fn to_protection_policy(&self) -> crate::types::ProtectionPolicy {
+        crate::types::ProtectionPolicy {
+            data_type_enc_policy: self.data_type_encryption_policy.to_runtime_policy(),
+            modification_policy: self.modification_policy.to_runtime_policy(),
+        }
+    }
 }

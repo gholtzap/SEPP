@@ -1,11 +1,15 @@
 use crate::errors::SeppError;
 use crate::types::{Certificate, CertificateStore, CertificateType, TrustAnchor};
+use josekit::jwk::alg::ec::EcCurve;
+use josekit::jwk::Jwk;
 use parking_lot::RwLock;
 use std::sync::Arc;
 use x509_parser::prelude::*;
 
 pub struct CertificateManager {
     store: Arc<RwLock<CertificateStore>>,
+    private_key: Arc<RwLock<Option<Jwk>>>,
+    public_keys: Arc<RwLock<Vec<(String, Jwk)>>>,
 }
 
 impl CertificateManager {
@@ -16,6 +20,8 @@ impl CertificateManager {
                 ipx_certificates: vec![],
                 trust_anchors: vec![],
             })),
+            private_key: Arc::new(RwLock::new(None)),
+            public_keys: Arc::new(RwLock::new(Vec::new())),
         }
     }
 
@@ -159,6 +165,100 @@ impl CertificateManager {
         }
 
         Ok(())
+    }
+
+    pub async fn load_sepp_private_key(&self, path: &str) -> Result<(), SeppError> {
+        let pem_data = tokio::fs::read(path)
+            .await
+            .map_err(|e| SeppError::Configuration(format!("Failed to read private key: {}", e)))?;
+
+        let mut cursor = std::io::Cursor::new(&pem_data);
+        let private_keys = rustls_pemfile::pkcs8_private_keys(&mut cursor)
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|e| SeppError::Configuration(format!("Failed to parse PKCS8 private key: {}", e)))?;
+
+        if private_keys.is_empty() {
+            return Err(SeppError::Configuration("No private key found in file".to_string()));
+        }
+
+        let key_der = private_keys[0].secret_pkcs8_der();
+
+        let jwk = josekit::jwk::alg::ec::EcKeyPair::from_der(key_der, Some(EcCurve::P256))
+            .map_err(|e| SeppError::Configuration(format!("Failed to convert private key to JWK: {}", e)))?
+            .to_jwk_key_pair();
+
+        *self.private_key.write() = Some(jwk);
+        Ok(())
+    }
+
+    pub async fn extract_public_key_from_certificate(&self, path: &str, key_id: String) -> Result<(), SeppError> {
+        let pem_data = tokio::fs::read(path)
+            .await
+            .map_err(|e| SeppError::Configuration(format!("Failed to read certificate: {}", e)))?;
+
+        let mut cursor = std::io::Cursor::new(&pem_data);
+        let certs = rustls_pemfile::certs(&mut cursor)
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|e| SeppError::Configuration(format!("Failed to parse certificate: {}", e)))?;
+
+        if certs.is_empty() {
+            return Err(SeppError::Configuration("No certificate found in file".to_string()));
+        }
+
+        let (_, cert) = X509Certificate::from_der(&certs[0])
+            .map_err(|e| SeppError::Configuration(format!("Failed to parse X509 certificate: {}", e)))?;
+
+        let spki = cert.public_key().raw;
+
+        let jwk = josekit::jwk::alg::ec::EcKeyPair::from_der(spki, Some(EcCurve::P256))
+            .map_err(|e| SeppError::Configuration(format!("Failed to convert public key to JWK: {}", e)))?
+            .to_jwk_public_key();
+
+        self.public_keys.write().push((key_id, jwk));
+        Ok(())
+    }
+
+    pub async fn load_public_key_from_file(&self, path: &str, key_id: String) -> Result<(), SeppError> {
+        let pem_data = tokio::fs::read(path)
+            .await
+            .map_err(|e| SeppError::Configuration(format!("Failed to read public key: {}", e)))?;
+
+        let mut cursor = std::io::Cursor::new(&pem_data);
+        let public_keys = rustls_pemfile::certs(&mut cursor)
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|e| SeppError::Configuration(format!("Failed to parse public key PEM: {}", e)))?;
+
+        if !public_keys.is_empty() {
+            let jwk = josekit::jwk::alg::ec::EcKeyPair::from_der(&public_keys[0], Some(EcCurve::P256))
+                .map_err(|e| SeppError::Configuration(format!("Failed to convert public key to JWK: {}", e)))?
+                .to_jwk_public_key();
+
+            self.public_keys.write().push((key_id, jwk));
+            return Ok(());
+        }
+
+        let jwk = josekit::jwk::alg::ec::EcKeyPair::from_der(&pem_data, Some(EcCurve::P256))
+            .map_err(|e| SeppError::Configuration(format!("Failed to convert public key to JWK: {}", e)))?
+            .to_jwk_public_key();
+
+        self.public_keys.write().push((key_id, jwk));
+        Ok(())
+    }
+
+    pub fn get_private_key(&self) -> Option<Jwk> {
+        self.private_key.read().clone()
+    }
+
+    pub fn get_public_key(&self, key_id: &str) -> Option<Jwk> {
+        self.public_keys
+            .read()
+            .iter()
+            .find(|(id, _)| id == key_id)
+            .map(|(_, jwk)| jwk.clone())
+    }
+
+    pub fn get_all_public_keys(&self) -> Vec<(String, Jwk)> {
+        self.public_keys.read().clone()
     }
 }
 

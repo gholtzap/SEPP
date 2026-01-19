@@ -8,19 +8,30 @@ use std::sync::Arc;
 
 pub struct N32cManager {
     contexts: Arc<DashMap<String, N32Context>>,
-    local_policy: ProtectionPolicy,
+    partner_policies: Arc<DashMap<String, ProtectionPolicy>>,
     sepp_client: SeppClient,
     peer_endpoints: Arc<DashMap<String, String>>,
 }
 
 impl N32cManager {
-    pub fn new(local_policy: ProtectionPolicy) -> Self {
+    pub fn new() -> Self {
         Self {
             contexts: Arc::new(DashMap::new()),
-            local_policy,
+            partner_policies: Arc::new(DashMap::new()),
             sepp_client: SeppClient::new(),
             peer_endpoints: Arc::new(DashMap::new()),
         }
+    }
+
+    pub fn register_partner_policy(&self, plmn_id: &PlmnId, policy: ProtectionPolicy) {
+        self.partner_policies.insert(plmn_id.to_string(), policy);
+    }
+
+    pub fn get_partner_policy(&self, plmn_id: &PlmnId) -> Result<ProtectionPolicy, SeppError> {
+        self.partner_policies
+            .get(&plmn_id.to_string())
+            .map(|entry| entry.value().clone())
+            .ok_or_else(|| SeppError::N32c(format!("No policy configured for PLMN {}", plmn_id)))
     }
 
     pub fn register_peer_endpoint(&self, plmn_id: &PlmnId, n32c_endpoint: String) {
@@ -50,6 +61,8 @@ impl N32cManager {
     ) -> Result<N32HandshakeResponse, SeppError> {
         let remote_plmn_id = request.local_plmn_id.clone();
 
+        let local_policy = self.get_partner_policy(&remote_plmn_id)?;
+
         tracing::info!(
             event = "N32C_POLICY_VALIDATION",
             remote_plmn = %remote_plmn_id,
@@ -61,7 +74,7 @@ impl N32cManager {
         context.protection_policy = request.protection_policy.clone();
         context.ipx_provider_sec_info_list = request.ipx_provider_sec_info_list.clone();
 
-        let policy_engine = PolicyEngine::new(self.local_policy.clone());
+        let policy_engine = PolicyEngine::new(local_policy.clone());
         if let Err(e) = policy_engine.compare_policies(&request.protection_policy) {
             tracing::error!(
                 event = "POLICY_MISMATCH_DETECTED",
@@ -95,7 +108,7 @@ impl N32cManager {
         Ok(N32HandshakeResponse {
             remote_plmn_id: local_plmn_id,
             security_capability: request.security_capability,
-            protection_policy: self.local_policy.clone(),
+            protection_policy: local_policy,
             ipx_provider_sec_info_list: request.ipx_provider_sec_info_list,
             selected_security_method: "TLS".to_string(),
         })
@@ -264,23 +277,6 @@ impl N32cManager {
 
 impl Default for N32cManager {
     fn default() -> Self {
-        use crate::types::{DataTypeEncryptionPolicy, ModificationPolicy};
-
-        let default_policy = ProtectionPolicy {
-            data_type_enc_policy: DataTypeEncryptionPolicy {
-                api_ie_mappings: vec![],
-            },
-            modification_policy: ModificationPolicy {
-                allowed_modifications: vec![],
-                prohibited_operations: vec![],
-            },
-        };
-
-        Self {
-            contexts: Arc::new(DashMap::new()),
-            local_policy: default_policy,
-            sepp_client: SeppClient::new(),
-            peer_endpoints: Arc::new(DashMap::new()),
-        }
+        Self::new()
     }
 }
