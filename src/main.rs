@@ -223,6 +223,7 @@ async fn main() -> anyhow::Result<()> {
         ));
 
     let sbi_app = Router::new()
+        .route("/health", get(handlers::health_check))
         .route(
             "/*path",
             get(handlers::SbiHandlers::handle_sbi_request)
